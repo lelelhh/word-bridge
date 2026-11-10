@@ -144,7 +144,7 @@ textarea.field{resize:vertical;min-height:120px;line-height:1.7;font-size:15px}
 .dashcard .tt{font-size:16px;font-weight:800}
 .dashcard .dd{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5}
 
-.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:0 20px 18px}
+.statgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:14px 20px 18px}
 .stat{background:var(--paper);border:1.5px solid var(--line);border-radius:12px;padding:13px 8px;text-align:center}
 .stat .n{font-size:24px;font-weight:800;line-height:1.1}
 .stat .k{font-size:11px;color:var(--muted);margin-top:5px}
@@ -831,6 +831,24 @@ input[type=range]{accent-color:#2FC1BE}
   background-image:
     linear-gradient(to right,transparent 32.9%,rgba(255,255,255,.26) 33%,rgba(255,255,255,.26) 33.4%,transparent 33.5%,transparent 66.4%,rgba(255,255,255,.26) 66.5%,rgba(255,255,255,.26) 66.9%,transparent 67%),
     linear-gradient(to bottom,transparent 32.9%,rgba(255,255,255,.26) 33%,rgba(255,255,255,.26) 33.4%,transparent 33.5%,transparent 66.4%,rgba(255,255,255,.26) 66.5%,rgba(255,255,255,.26) 66.9%,transparent 67%)}
+
+/* ================= 版式规整：全站统一的留白节奏 ================= */
+/* 顶栏与下方内容之间至少留出 16px，分区之间统一 14 / 18px */
+.topbar{padding:12px 12px 16px}
+.list{padding:14px 20px 26px;gap:12px}
+.tabs{margin:14px 20px 14px}
+.pagetitle{margin:6px 0 8px}
+.dash{padding:8px 20px 24px;gap:12px}
+.dashcard{min-height:66px}
+.ktabs{margin:16px 16px 12px}
+.kmodes{margin:14px 16px 0}
+.kidtop{padding:16px 16px 10px}
+.kclist{padding:16px 16px 26px;gap:12px}
+.kidlist-body{padding:14px 16px 26px}
+.card{padding:16px}
+.label{margin:16px 0 8px}
+.divider{margin:16px 0}
+.empty{padding:40px 10px}
 </style>
 </head>
 <body>
@@ -1568,17 +1586,16 @@ ROUTES.parent = {
     const libCount = S.libs.length;
     const bridgeCount = S.bridges.filter(b => !b.done).length;
     return `<div class="screen">
-      ${topbar('家长中心', 'home')}
-      <div class="pad">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-          <span style="font-size:11px;color:var(--muted);letter-spacing:.5px">当前学生</span>
-          <span style="font-size:14px;font-weight:800;color:var(--ink)">${esc(studentLabel())}</span>
-          <button class="btn btn-ghost btn-sm" id="pSwitch" style="margin-left:auto">切换学生</button>
+      ${topbar('家长中心', 'home', `<button class="btn btn-ghost btn-sm" id="pSwitch">切换学生</button>`)}
+      <div class="pad" style="padding-top:16px">
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span style="font-size:12px;color:var(--muted);letter-spacing:.3px">当前学生</span>
+          <span style="font-size:15px;font-weight:800;color:var(--ink)">${esc(studentLabel())}</span>
         </div>
-        <h1 class="pagetitle">今天要给她练什么</h1>
+        <h1 class="pagetitle" style="margin:14px 0 6px">今天要给她练什么</h1>
         <p class="sub">${libCount} 个词库 · ${bridgeCount} 座桥待闯关 · ${S.weak.length} 个薄弱词</p>
       </div>
-      <div class="dash" style="margin-top:16px">
+      <div class="dash" style="margin-top:18px">
         <button class="dashcard" id="dLibs">
           <div class="ic" style="background:#E7F0EC">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2E7D6B" stroke-width="2"><rect x="3" y="4" width="7" height="16" rx="1.5"/><rect x="14" y="4" width="7" height="16" rx="1.5"/></svg>
@@ -1650,7 +1667,7 @@ ROUTES.libs = {
       : `<div class="empty">还没有词库<br>点右上角“新建词库”开始</div>`;
     return `<div class="screen">
       ${topbar('词库素材池', 'parent', `<button class="btn btn-green btn-sm" id="newLib">新建词库</button>`)}
-      <p class="sub pad" style="padding-bottom:10px">按年级分组：每个年级下面是各个单元，平时零散作业放在“平日作业”。选词时会从这里挑。</p>
+      <p class="sub pad" style="padding:16px 20px 10px">按年级分组：每个年级下面是各个单元，平时零散作业放在“平日作业”。选词时会从这里挑。</p>
       <div class="scroll">
         <div class="list">${body}</div>
       </div>
@@ -2345,7 +2362,7 @@ ROUTES.backup = {
     const st = saveStats();
     return `<div class="screen kidbg">
       ${topbar('存档备份', 'parent')}
-      <div class="scroll"><div class="list" style="padding-top:8px">
+      <div class="scroll"><div class="list" style="padding-top:14px">
         <div class="item" style="display:block;padding:16px">
           <div class="t">这台设备上的存档</div>
           <div class="d" style="margin-top:6px;line-height:1.9">
@@ -2505,7 +2522,7 @@ ROUTES.kidList = {
         <button data-ktab="weak" class="${tab === 'weak' ? 'on' : ''}">薄弱复习</button>
         <button data-ktab="units" class="${tab === 'units' ? 'on' : ''}">分单元</button>
       </div>
-      <div class="scroll"><div style="padding:0 16px 24px;display:flex;flex-direction:column;gap:10px">
+      <div class="scroll"><div class="kidlist-body" style="display:flex;flex-direction:column;gap:12px">
         ${body}
       </div></div>
     </div>`;
@@ -2563,7 +2580,7 @@ ROUTES.who = {
     }).join('');
     return `<div class="screen kidbg">
       ${topbar('选择学生', back)}
-      <div style="padding:6px 18px 0">
+      <div style="padding:16px 18px 0">
         <div style="font-size:22px;font-weight:800;color:#1F4B5E">今天是谁来练？</div>
         <div style="font-size:13px;color:#8FA6C1;margin-top:7px;line-height:1.6">两个账号的桥、薄弱词、形象各自独立，词库共用一套</div>
       </div>
@@ -2584,7 +2601,7 @@ ROUTES.profile = {
   html() {
     return `<div class="screen kidbg">
       ${topbar('我的小探险家', 'kidList')}
-      <div style="padding:6px 16px 0;text-align:center">
+      <div style="padding:16px 16px 0;text-align:center">
         <div style="position:relative;height:190px;display:grid;place-items:center;
           background:radial-gradient(ellipse at 50% 100%,#9BE7DC,#6FD8CF 70%);border-radius:16px">
           <div class="rig idle" id="previewRig" style="position:relative;left:0;bottom:0">${rigSVG(S.profile)}</div>
@@ -2596,21 +2613,21 @@ ROUTES.profile = {
         <input type="file" id="avaFile" accept="image/*" style="display:none">
         <p style="font-size:12px;color:#6E86A4;text-align:center;margin:8px 0 0">上传后可以自己拖动缩放，只框住头 · 过桥人物同步更新</p>
 
-        <div style="font-size:13px;font-weight:800;color:#9FB4CC;margin:22px 0 10px">选个身体</div>
+        <div style="font-size:13px;font-weight:800;color:#7C9AA6;margin:22px 0 10px">选个身体</div>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
           ${[['boy', '蓝衣长裤'], ['shorts', '橙衣短裤']].map(([k, label]) => {
             const on = (S.profile.body === 'shorts' ? 'shorts' : 'boy') === k;
-            return `<button data-body="${k}" style="border:1.5px solid ${on ? '#F7C948' : '#2C4266'};
-            background:${on ? '#22375A' : '#16253F'};border-radius:12px;padding:12px 4px;cursor:pointer;font-family:inherit">
+            return `<button data-body="${k}" style="border:1.5px solid ${on ? '#2FC1BE' : '#DBEFEA'};
+            background:${on ? '#EAFBF7' : '#FFFFFF'};border-radius:14px;padding:12px 4px;cursor:pointer;font-family:inherit">
             <div style="position:relative;height:86px;overflow:hidden">
               <div class="rig" style="position:absolute;left:50%;bottom:-4px;margin-left:-58px;transform:scale(.5);transform-origin:center bottom">${rigSVG({ ...S.profile, body: k })}</div>
             </div>
-            <div style="font-size:12px;color:${on ? '#F7C948' : '#8095AE'};font-weight:700">${label}</div>
+            <div style="font-size:12px;color:${on ? '#14938F' : '#7C9AA6'};font-weight:700">${label}</div>
           </button>`;
           }).join('')}
         </div>
 
-        <div style="font-size:13px;font-weight:800;color:#9FB4CC;margin:22px 0 8px">昵称</div>
+        <div style="font-size:13px;font-weight:800;color:#7C9AA6;margin:22px 0 8px">昵称</div>
         <input class="field" id="nick" value="${esc(S.profile.name)}" style="background:#F1FAF8;border-color:#D6EFEB;color:#1F4B5E" maxlength="10">
 
         <button class="btn btn-green btn-block" id="saveProfile" style="margin-top:18px">保存形象</button>
@@ -3148,7 +3165,7 @@ function practiceDoneHTML(title) {
       </div>
       <button class="btn btn-green btn-block" id="pAgain" style="padding:15px">再来一遍</button>
       ${nextHTML}
-      <button class="btn btn-ghost btn-block" id="pBack" style="margin-top:12px;padding:15px;color:#C9D8EA;border-color:#3A5170">回到列表</button>
+      <button class="btn btn-ghost btn-block" id="pBack" style="margin-top:12px;padding:15px">回到列表</button>
     </div>
   </div>`;
 }
@@ -3189,7 +3206,7 @@ ROUTES.dictPick = {
     const rows = pickGroupsHTML(libs);
     return `<div class="screen kidbg">
       ${topbar('听写练习', 'kidList')}
-      <div style="padding:6px 18px 0">
+      <div style="padding:16px 18px 0">
         <div style="font-size:22px;font-weight:800;color:#1F4B5E">先选一个词库</div>
         <div style="font-size:13px;color:#8FA6C1;margin-top:7px;line-height:1.6">按年级分组，选好就开始，这一轮的词要一次写完，中途不换词库</div>
       </div>
@@ -3211,7 +3228,7 @@ ROUTES.quizPick = {
     const rows = pickGroupsHTML(libs);
     return `<div class="screen kidbg">
       ${topbar('选择测试', 'kidList')}
-      <div style="padding:6px 18px 0">
+      <div style="padding:16px 18px 0">
         <div style="font-size:22px;font-weight:800;color:#1F4B5E">先选一个词库</div>
         <div style="font-size:13px;color:#7C9AA6;margin-top:7px;line-height:1.6">按年级分组，选好就开始，这一轮的题要一次做完，中途不换词库</div>
       </div>
@@ -3358,7 +3375,7 @@ ROUTES.settings = {
     const s = S.settings || { rate: 0.85, accent: 'en-GB' };
     return `<div class="screen kidbg">
       ${topbar('设置', 'kidList')}
-      <div class="scroll"><div class="list" style="padding-top:8px">
+      <div class="scroll"><div class="list" style="padding-top:14px">
         <div class="item" style="display:block;padding:16px">
           <div class="t">朗读速度</div>
           <div class="d" id="rateTxt">当前 ${Number(s.rate).toFixed(2)} 倍速</div>
@@ -3375,7 +3392,7 @@ ROUTES.settings = {
           <div class="t">发音引擎</div>
           <div class="d" id="engineTxt">${speechEngineLabel()}</div>
         </div>
-        <button class="btn btn-ghost btn-block" id="testSpk" style="margin-top:4px;color:#C9D8EA;border-color:#3A5170">试听一个词</button>
+        <button class="btn btn-ghost btn-block" id="testSpk" style="margin-top:4px">试听一个词</button>
         <p class="sub" style="margin-top:14px;line-height:1.7">系统里有英文音色时用系统语音，没有就自动用在线发音，两种都不需要额外设置。若在线发音也听不到，多半是网络没连上。</p>
       </div></div>
     </div>`;
