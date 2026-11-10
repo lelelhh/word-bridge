@@ -922,6 +922,60 @@ function seedMissingJT() {
   return true;
 }
 
+/* ================= 词库归类：年级 / 平日作业 ================= */
+const GRADES = [
+  { k: '3', name: '三年级' },
+  { k: '4', name: '四年级' },
+  { k: '7', name: '七年级' },
+  { k: '8', name: '八年级' }
+];
+function gradeName(k) {
+  const g = GRADES.find(x => x.k === String(k));
+  return g ? g.name : '';
+}
+function guessGrade(l) {
+  if (l.g) return String(l.g);
+  const t = String((l.book || '') + ' ' + (l.name || ''));
+  if (/八/.test(t)) return '8';
+  if (/七/.test(t)) return '7';
+  if (/四/.test(t)) return '4';
+  if (/三/.test(t)) return '3';
+  return '';
+}
+function isHomework(l) { return (l.k || (l.unit ? 'unit' : 'home')) === 'home'; }
+/* 老数据补字段：按名字/册别猜年级，没有 unit 的算平日作业 */
+function normalizeLibs() {
+  let changed = false;
+  (S.libs || []).forEach(l => {
+    const g = guessGrade(l);
+    if (!l.g && g) { l.g = g; changed = true; }
+    const k = l.unit ? 'unit' : (l.k || 'home');
+    if (!l.k) { l.k = k; changed = true; }
+  });
+  if (changed) save();
+}
+/* 分组：[年级 → 单元] + 平日作业 + 未归类 */
+function libGroups(libs) {
+  const arr = libs || [];
+  const out = [];
+  GRADES.forEach(g => {
+    const items = arr.filter(l => !isHomework(l) && String(l.g || guessGrade(l)) === g.k);
+    if (items.length) out.push({ key: 'g' + g.k, title: g.name, sub: items.length + ' 个单元', libs: items });
+  });
+  const home = arr.filter(l => isHomework(l));
+  if (home.length) out.push({ key: 'home', title: '平日作业', sub: home.length + ' 个词库', libs: home });
+  const none = arr.filter(l => !isHomework(l) && !GRADES.some(g => String(l.g || guessGrade(l)) === g.k));
+  if (none.length) out.push({ key: 'none', title: '未归类', sub: none.length + ' 个单元', libs: none });
+  return out;
+}
+/* 归类修改：val = '3'|'4'|'7'|'8'|''（年级，归为单元） 或 'home'（平日作业） */
+function setLibGroup(lib, val) {
+  if (!lib) return;
+  if (val === 'home') { lib.g = ''; lib.k = 'home'; }
+  else { lib.g = String(val || ''); lib.k = 'unit'; }
+  save();
+}
+
 /* ================= 状态 ================= */
 const LSKEY = 'wordbridge_v1';
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -1573,31 +1627,43 @@ ROUTES.parent = {
 
 /* ================= 家长端 · 词库列表 ================= */
 ROUTES.libs = {
-  html() {
-    const rows = S.libs.map(l => `
-      <div class="item">
+  html(d) {
+    const groups = libGroups(S.libs);
+    const row = l => `<div class="item">
         <div style="flex:1;min-width:0" data-open="${l.id}">
-          <div class="t">${esc(l.name)}</div>
-          <div class="d">${l.words.length} 个词条</div>
+          <div class="t">${esc(l.unit ? libLabel(l) : l.name)}</div>
+          <div class="d">${l.unit ? esc(l.book || '') + ' · ' : ''}${l.words.length} 个词条</div>
         </div>
         <button class="btn btn-ghost btn-sm" data-open="${l.id}">进入</button>
         <button class="iconbtn" data-del="${l.id}" aria-label="删除词库">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9A5B4E" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
         </button>
-      </div>`).join('');
+      </div>`;
+    const body = groups.length ? groups.map((gp, gi) => `
+      <div style="margin-top:${gi ? 18 : 4}px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 8px">
+          <div style="font-size:13.5px;font-weight:800;color:#14938F;letter-spacing:.4px">${esc(gp.title)}</div>
+          <div style="font-size:11px;color:#9AAFBE">${esc(gp.sub)}</div>
+        </div>
+        ${gp.libs.map(row).join('')}
+      </div>`).join('')
+      : `<div class="empty">还没有词库<br>点右上角“新建词库”开始</div>`;
     return `<div class="screen">
       ${topbar('词库素材池', 'parent', `<button class="btn btn-green btn-sm" id="newLib">新建词库</button>`)}
-      <p class="sub pad" style="padding-bottom:14px">一个词库是一整批词，例如“七上全册”或“每天作业”。选词时会从这里挑。</p>
+      <p class="sub pad" style="padding-bottom:10px">按年级分组：每个年级下面是各个单元，平时零散作业放在“平日作业”。选词时会从这里挑。</p>
       <div class="scroll">
-        <div class="list">${rows || `<div class="empty">还没有词库<br>点右上角“新建词库”开始</div>`}</div>
+        <div class="list">${body}</div>
       </div>
     </div>`;
   },
   bind() {
-    document.getElementById('newLib').onclick = () => askText('新建词库', '给这批词起个名字', '例如：七上 Unit 3 单词', name => {
-      if (!name) return;
-      S.libs.unshift({ id: uid(), name: name, words: [] });
-      save(); go('libDetail', { libId: S.libs[0].id }, 'libs');
+    document.getElementById('newLib').onclick = () => askNewLib((v) => {
+      if (!v || !v.name) return;
+      const lib = { id: uid(), name: v.name, words: [] };
+      if (v.g === 'home') { lib.k = 'home'; lib.g = ''; }
+      else { lib.g = v.g; lib.k = 'unit'; }
+      S.libs.unshift(lib);
+      save(); go('libDetail', { libId: lib.id }, 'libs');
     });
     document.querySelectorAll('[data-open]').forEach(el => el.onclick = e => {
       e.stopPropagation();
@@ -1612,6 +1678,45 @@ ROUTES.libs = {
     });
   }
 };
+
+/* 新建词库：先挑年级 / 平日作业，再起名字 */
+function askNewLib(cb) {
+  const mask = document.createElement('div');
+  mask.className = 'mask';
+  let g = '3';
+  const chip = (val, txt) => `<button data-lg="${val}" style="padding:9px 13px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;border:1.5px solid ${val === g ? '#2FC1BE' : '#DBD2C0'};background:${val === g ? '#E7F8F5' : '#FFFDF7'};color:${val === g ? '#14938F' : '#7C8A96'}">${txt}</button>`;
+  mask.innerHTML = `<div class="modal">
+    <h3>新建词库</h3><p>先选它属于哪个年级（或平日作业），之后按年级分组就找得到。</p>
+    <div id="nbChips" style="display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 4px">
+      ${GRADES.map(x => chip(x.k, x.name)).join('')}${chip('home', '平日作业')}
+    </div>
+    <input class="field" id="nbName" placeholder="例如：七上 Unit 3 单词 / 10月15日作业" autocomplete="off" style="margin-top:12px">
+    <div class="acts" style="margin-top:16px">
+      <button class="btn btn-ghost" id="nbNo">取消</button>
+      <button class="btn btn-green" id="nbYes">创建</button>
+    </div>
+  </div>`;
+  document.body.appendChild(mask);
+  const inp = mask.querySelector('#nbName');
+  const chips = mask.querySelectorAll('#nbChips [data-lg]');
+  const paintChips = () => chips.forEach(c => {
+    const on = c.dataset.lg === g;
+    c.style.borderColor = on ? '#2FC1BE' : '#DBD2C0';
+    c.style.background = on ? '#E7F8F5' : '#FFFDF7';
+    c.style.color = on ? '#14938F' : '#7C8A96';
+  });
+  chips.forEach(c => c.onclick = () => { g = c.dataset.lg; paintChips(); });
+  setTimeout(() => inp.focus(), 60);
+  const close = () => mask.remove();
+  const submit = () => {
+    const name = inp.value.trim();
+    if (!name) { inp.focus(); return; }
+    close(); cb({ name, g });
+  };
+  mask.querySelector('#nbNo').onclick = close;
+  mask.querySelector('#nbYes').onclick = submit;
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
+}
 
 /* ================= 弹窗 ================= */
 function askText(title, desc, ph, cb) {
@@ -1659,8 +1764,16 @@ ROUTES.libDetail = {
     let body = '';
 
     if (tab === 'words') {
+      const cur = isHomework(lib) ? 'home' : String(lib.g || '');
+      const chip = (val, txt) => `<button data-lg="${val}" style="padding:9px 13px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;border:1.5px solid ${val === cur ? '#2FC1BE' : '#DBD2C0'};background:${val === cur ? '#E7F8F5' : '#FFFDF7'};color:${val === cur ? '#14938F' : '#7C8A96'}">${txt}</button>`;
       body = `<div class="scroll">
         <div class="list" style="gap:0">
+          <div class="item" style="display:block;padding:13px 14px;margin-bottom:12px">
+            <div style="font-size:12px;font-weight:800;color:#8C7A4F;margin-bottom:9px">归类 <span style="font-weight:500;color:#A9A08A">· 决定它出现在哪个分组</span></div>
+            <div id="libChips" style="display:flex;gap:7px;flex-wrap:wrap">
+              ${GRADES.map(x => chip(x.k, x.name)).join('')}${chip('home', '平日作业')}${chip('', '未归类')}
+            </div>
+          </div>
           <button class="btn btn-green btn-block" id="addW" style="margin-bottom:12px">添加单词</button>
           <button class="btn btn-ghost btn-block" id="bulkW" style="margin-bottom:14px">批量粘贴导入</button>
           ${lib.words.length ? lib.words.map((w, i) => `
@@ -1742,9 +1855,15 @@ ROUTES.libDetail = {
   bind(d) {
     const lib = S.libs.find(l => l.id === d.libId);
     if (!lib) return;
+    if (!d.tab) d.tab = 'words';   /* 从列表直接进来时默认在“单词管理”，否则下面的按钮会绑不上 */
     document.querySelectorAll('[data-tab]').forEach(el => el.onclick = () => go('libDetail', { libId: lib.id, tab: el.dataset.tab }, 'libs'));
 
     if (d.tab === 'words') {
+      document.querySelectorAll('#libChips [data-lg]').forEach(el => el.onclick = () => {
+        setLibGroup(lib, el.dataset.lg);
+        go('libDetail', { libId: lib.id, tab: 'words' }, 'libs');
+        toast('归类已更新');
+      });
       document.getElementById('addW').onclick = () => editWord(lib, -1);
       document.getElementById('bulkW').onclick = () => bulkImport(lib);
       document.querySelectorAll('[data-editw]').forEach(el => el.onclick = () => editWord(lib, +el.dataset.editw));
@@ -2325,20 +2444,20 @@ ROUTES.kidList = {
         : `<div class="empty" style="color:#7B90AB">还没有通关记录</div>`;
     } else if (tab === 'units') {
       const units = S.libs.filter(l => l.unit);
-      const bookOf = l => l.book || (/^精通/.test(l.name) ? '精通版三上' : '外研新版七上');
-      const books = [];
-      units.forEach(l => { const k = bookOf(l); if (books.indexOf(k) < 0) books.push(k); });
       const card = l => `<button class="bridge-card" data-ulib="${l.id}">
         <div style="width:60px;height:36px;display:grid;place-items:center;border-radius:9px;background:#1E3350;color:#F7C948;font-size:${l.unit.length > 4 ? 11 : 13}px;font-weight:800;flex:0 0 auto">${esc(l.unit)}</div>
         <div style="flex:1;min-width:0">
           <div class="nm">${esc(l.unit)} 单元练习</div>
-          <div class="mt">${l.words.length} 个词 · 自己走一座桥</div>
+          <div class="mt">${esc(l.book || '')} · ${l.words.length} 个词</div>
         </div>
         <svg class="arw" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg>
       </button>`;
+      const groups = libGroups(units);
       body = units.length
-        ? books.map(k => `<div style="margin:${books.indexOf(k) === 0 ? 0 : 16}px 2px 8px;font-size:12px;letter-spacing:.4px;color:#7B90AB">${esc(k)}</div>`
-            + units.filter(l => bookOf(l) === k).map(card).join('')).join('')
+        ? groups.map((gp, gi) => `<div style="margin:${gi ? 16 : 0}px 2px 8px;display:flex;align-items:baseline;justify-content:space-between">
+            <div style="font-size:13px;font-weight:800;color:#2FC1BE;letter-spacing:.5px">${esc(gp.title)}</div>
+            <div style="font-size:11px;color:#7B90AB">${esc(gp.sub)}</div>
+          </div>` + gp.libs.map(card).join('')).join('')
         : `<div class="empty" style="color:#7B90AB">还没有单元词库<br>让家长在词库里确认一下</div>`;
     } else {
       body = S.weak.length ? `<button class="bridge-card weak" data-weak="1">
@@ -2937,6 +3056,18 @@ function practiceStart(mode, libId) {
   P = { mode, libId: lib.id, libName: lib.name, words, i: 0, revealed: false, right: 0, wrong: 0, picks: null, dir: (prevDir || 'en') };
   return P;
 }
+/* 选词库页面：按 年级 → 单元 / 平日作业 分组，返回 grid 内的卡片串 */
+function pickGroupsHTML(libs) {
+  const card = l => `<button data-picklib="${l.id}" style="text-align:left;padding:12px 13px;border-radius:12px;border:1.5px solid #DBEFEA;background:#FFFFFF;color:#1F4B5E;font-family:inherit;cursor:pointer">
+      <span style="display:block;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(libLabel(l))}</span>
+      <span style="display:block;font-size:11px;color:#8FA6C1;margin-top:4px">${l.words.length} 个词</span>
+    </button>`;
+  return libGroups(libs).map((gp, gi) => `
+    <div style="grid-column:1/-1;display:flex;align-items:baseline;justify-content:space-between;margin:${gi ? 12 : 0}px 2px 2px">
+      <div style="font-size:13px;font-weight:800;color:#2FC1BE;letter-spacing:.5px">${esc(gp.title)}</div>
+      <div style="font-size:11px;color:#8FA6C1">${esc(gp.sub)}</div>
+    </div>${gp.libs.map(card).join('')}`).join('');
+}
 function libLabel(l) {
   const isJt = /^精通/.test(String(l.name || '')) || /^精通/.test(String(l.book || ''));
   return l.unit
@@ -3055,15 +3186,12 @@ function bindPracticeDone() {
 ROUTES.dictPick = {
   html() {
     const libs = practiceLibs();
-    const rows = libs.map(l => `<button data-picklib="${l.id}" style="text-align:left;padding:12px 13px;border-radius:12px;border:1.5px solid #DBEFEA;background:#FFFFFF;color:#1F4B5E;font-family:inherit;cursor:pointer">
-      <span style="display:block;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(libLabel(l))}</span>
-      <span style="display:block;font-size:11px;color:#8FA6C1;margin-top:4px">${l.words.length} 个词</span>
-    </button>`).join('');
+    const rows = pickGroupsHTML(libs);
     return `<div class="screen kidbg">
       ${topbar('听写练习', 'kidList')}
       <div style="padding:6px 18px 0">
         <div style="font-size:22px;font-weight:800;color:#1F4B5E">先选一个词库</div>
-        <div style="font-size:13px;color:#8FA6C1;margin-top:7px;line-height:1.6">选好就开始，这一轮的词要一次写完，中途不换词库</div>
+        <div style="font-size:13px;color:#8FA6C1;margin-top:7px;line-height:1.6">按年级分组，选好就开始，这一轮的词要一次写完，中途不换词库</div>
       </div>
       <div class="scroll"><div style="padding:14px 16px 26px;display:grid;grid-template-columns:1fr 1fr;gap:10px">${rows}</div></div>
     </div>`;
@@ -3080,15 +3208,12 @@ ROUTES.dictPick = {
 ROUTES.quizPick = {
   html() {
     const libs = practiceLibs();
-    const rows = libs.map(l => `<button data-picklib="${l.id}" style="text-align:left;padding:12px 13px;border-radius:12px;border:1.5px solid #DBEFEA;background:#FFFFFF;color:#1F4B5E;font-family:inherit;cursor:pointer">
-      <span style="display:block;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(libLabel(l))}</span>
-      <span style="display:block;font-size:11px;color:#7C9AA6;margin-top:4px">${l.words.length} 个词</span>
-    </button>`).join('');
+    const rows = pickGroupsHTML(libs);
     return `<div class="screen kidbg">
       ${topbar('选择测试', 'kidList')}
       <div style="padding:6px 18px 0">
         <div style="font-size:22px;font-weight:800;color:#1F4B5E">先选一个词库</div>
-        <div style="font-size:13px;color:#7C9AA6;margin-top:7px;line-height:1.6">选好就开始，这一轮的题要一次做完，中途不换词库</div>
+        <div style="font-size:13px;color:#7C9AA6;margin-top:7px;line-height:1.6">按年级分组，选好就开始，这一轮的题要一次做完，中途不换词库</div>
       </div>
       <div class="scroll"><div style="padding:14px 16px 26px;display:grid;grid-template-columns:1fr 1fr;gap:10px">${rows}</div></div>
     </div>`;
@@ -3669,6 +3794,7 @@ function renderResult() {
   if (!S.activeId) loadStudent('g7');            // 老数据默认落在七年级
   if (!had || S.seedVer !== SEED_VER) seed();
   seedMissingJT();                                // 精通版三上 Unit 2–6 缺则补进素材池
+  normalizeLibs();                                // 词库补上「年级 / 平日作业」归类
   refreshVoices();
   if (typeof window.speechSynthesis !== 'undefined') {
     // 音色列表是异步加载的，加载好再刷新一次；只在还没决定引擎时影响选择
