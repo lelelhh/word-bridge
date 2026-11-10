@@ -1,6 +1,6 @@
 /* 单词桥 · 离线缓存
    改了 index.html 之后，把 CACHE 的版本号 +1，用户下次打开就会拿到新版 */
-const CACHE = 'wordbridge-1';
+const CACHE = 'wordbridge-2';
 const ASSETS = [
   './',
   './index.html',
