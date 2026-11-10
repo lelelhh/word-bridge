@@ -822,6 +822,15 @@ input[type=range]{accent-color:#2FC1BE}
 #revealBox.on{display:block}
 #revealBox .rb-t{font-size:12px;color:#8A6B33;letter-spacing:.3px}
 #revealBox .rb-w{font-size:24px;font-weight:700;color:#1F4B5E;letter-spacing:2px;margin-top:4px}
+
+/* 头像裁切 */
+#cropMask{position:fixed;inset:0;z-index:80;background:rgba(8,22,28,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px}
+#cropStage{position:relative;overflow:hidden;border-radius:18px;background:#0B1C22;touch-action:none;box-shadow:0 0 0 2px #2FC1BE,0 16px 36px rgba(0,0,0,.55)}
+#cropImg{position:absolute;left:50%;top:50%;transform-origin:center center;user-select:none;-webkit-user-drag:none;pointer-events:none}
+#cropGrid{position:absolute;inset:0;pointer-events:none;
+  background-image:
+    linear-gradient(to right,transparent 32.9%,rgba(255,255,255,.26) 33%,rgba(255,255,255,.26) 33.4%,transparent 33.5%,transparent 66.4%,rgba(255,255,255,.26) 66.5%,rgba(255,255,255,.26) 66.9%,transparent 67%),
+    linear-gradient(to bottom,transparent 32.9%,rgba(255,255,255,.26) 33%,rgba(255,255,255,.26) 33.4%,transparent 33.5%,transparent 66.4%,rgba(255,255,255,.26) 66.5%,rgba(255,255,255,.26) 66.9%,transparent 67%)}
 </style>
 </head>
 <body>
@@ -2464,9 +2473,9 @@ ROUTES.profile = {
         <p style="font-size:12px;color:#8FA6C1;margin:10px 0 0">过桥时就是这个样子</p>
       </div>
       <div class="scroll"><div style="padding:16px">
-        <button class="btn btn-main btn-block" id="upAva">上传我的照片当头像</button>
+        <button class="btn btn-green btn-block" id="upAva">上传我的照片当头像</button>
         <input type="file" id="avaFile" accept="image/*" style="display:none">
-        <p style="font-size:12px;color:#6E86A4;text-align:center;margin:8px 0 0">会裁成圆形贴在头部，过桥人物同步更新</p>
+        <p style="font-size:12px;color:#6E86A4;text-align:center;margin:8px 0 0">上传后可以自己拖动缩放，只框住头 · 过桥人物同步更新</p>
 
         <div style="font-size:13px;font-weight:800;color:#9FB4CC;margin:22px 0 10px">选个身体</div>
         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px">
@@ -2495,8 +2504,10 @@ ROUTES.profile = {
     document.getElementById('upAva').onclick = () => file.click();
     file.onchange = e => {
       const f = e.target.files && e.target.files[0];
+      file.value = '';
       if (!f) return;
-      compressImage(f, dataURL => {
+      openAvatarCrop(f, dataURL => {
+        if (!dataURL) return;
         S.profile.avatar = dataURL;
         save();
         go('profile', {}, 'kidList');
@@ -2517,6 +2528,125 @@ ROUTES.profile = {
     if (clr) clr.onclick = () => { S.profile.avatar = null; save(); go('profile', {}, 'kidList'); };
   }
 };
+
+/* 头像裁切：方形取景框 + 拖动 + 双指/滑块缩放，默认取画面上部（脸的位置） */
+function openAvatarCrop(file, done) {
+  const S0 = Math.max(210, Math.min(window.innerWidth - 56, window.innerHeight - 260, 320));
+  const mask = document.createElement('div');
+  mask.id = 'cropMask';
+  mask.innerHTML = `
+    <div style="color:#CFE9E4;font-size:13.5px;font-weight:800;margin-bottom:12px;letter-spacing:.5px">调整头像 · 让脸在框里</div>
+    <div id="cropStage" style="width:${S0}px;height:${S0}px">
+      <img id="cropImg" alt="">
+      <div id="cropGrid"></div>
+    </div>
+    <div style="width:${S0}px;display:flex;align-items:center;gap:10px;margin-top:14px">
+      <span style="color:#8FB8B3;font-size:12px">缩小</span>
+      <input id="cropZoom" type="range" min="0" max="100" value="0" style="flex:1;accent-color:#2FC1BE">
+      <span style="color:#8FB8B3;font-size:12px">放大</span>
+    </div>
+    <div style="color:#7FA9A4;font-size:11.5px;line-height:1.65;margin-top:8px;text-align:center;max-width:${S0}px">按住图片拖到合适位置，双指捏合或用滑块缩放。<br>头占满框、露出到下巴就最好看。</div>
+    <div style="display:flex;gap:10px;width:${S0}px;margin-top:16px">
+      <button id="cropCancel" style="flex:1;padding:13px;border-radius:12px;border:1.5px solid #3C6A68;background:transparent;color:#BFE7E2;font-family:inherit;font-weight:700;font-size:15px">取消</button>
+      <button id="cropOk" style="flex:1;padding:13px;border-radius:12px;border:none;background:linear-gradient(180deg,#43D6B6,#22B98B);color:#fff;font-family:inherit;font-weight:800;font-size:15px;box-shadow:0 4px 0 #199B74">就用这张</button>
+    </div>`;
+  document.body.appendChild(mask);
+
+  const im = mask.querySelector('#cropImg');
+  const stageEl = mask.querySelector('#cropStage');
+  const slider = mask.querySelector('#cropZoom');
+  const url = URL.createObjectURL(file);
+  let base = 1, k = 1, tx = 0, ty = 0, iw = 1, ih = 1, alive = true;
+
+  function applyClamp() {
+    const W = iw * base * k, H = ih * base * k;
+    const mx = Math.max(0, (W - S0) / 2), my = Math.max(0, (H - S0) / 2);
+    tx = Math.min(mx, Math.max(-mx, tx));
+    ty = Math.min(my, Math.max(-my, ty));
+  }
+  function paint() {
+    applyClamp();
+    im.style.width = (iw * base * k) + 'px';
+    im.style.height = (ih * base * k) + 'px';
+    im.style.transform = 'translate(-50%,-50%) translate(' + tx + 'px,' + ty + 'px)';
+  }
+  function syncSlider() {
+    slider.value = String(Math.round(((k - 1) / 3) * 100));
+  }
+
+  im.onload = () => {
+    iw = im.naturalWidth || 1; ih = im.naturalHeight || 1;
+    base = S0 / Math.min(iw, ih);
+    k = 1.4;                          /* 默认多放大一点，让脸占满画面 */
+    tx = 0;
+    ty = (0.5 - 0.28) * ih * base * k; /* 默认对准画面上部 28%，通常正好是脸 */
+    syncSlider();
+    paint();
+  };
+  im.src = url;
+
+  slider.oninput = () => { k = 1 + (Number(slider.value) / 100) * 3; paint(); };
+
+  const ptrs = new Map();
+  let d0 = 0, k0 = 1, mid0 = null;
+  const two = () => Array.from(ptrs.values());
+  const distOf = () => { const p = two(); return Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y); };
+  const midOf = () => { const p = two(); return { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 }; };
+
+  stageEl.addEventListener('pointerdown', e => {
+    try { stageEl.setPointerCapture(e.pointerId); } catch (x) {}
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ptrs.size === 2) { d0 = distOf(); k0 = k; mid0 = midOf(); }
+  });
+  stageEl.addEventListener('pointermove', e => {
+    if (!ptrs.has(e.pointerId)) return;
+    const prev = ptrs.get(e.pointerId);
+    const cur = { x: e.clientX, y: e.clientY };
+    ptrs.set(e.pointerId, cur);
+    if (ptrs.size === 1) {
+      tx += cur.x - prev.x; ty += cur.y - prev.y; paint();
+    } else if (ptrs.size === 2) {
+      if (d0 > 0) k = Math.min(4, Math.max(1, k0 * (distOf() / d0)));
+      const mid = midOf();
+      if (mid0) { tx += mid.x - mid0.x; ty += mid.y - mid0.y; mid0 = mid; }
+      syncSlider(); paint();
+    }
+  });
+  const up = e => { ptrs.delete(e.pointerId); if (ptrs.size < 2) { d0 = 0; mid0 = null; } };
+  stageEl.addEventListener('pointerup', up);
+  stageEl.addEventListener('pointercancel', up);
+  stageEl.addEventListener('wheel', e => {
+    e.preventDefault();
+    k = Math.min(4, Math.max(1, k + (e.deltaY < 0 ? 0.12 : -0.12)));
+    syncSlider(); paint();
+  }, { passive: false });
+
+  function cleanup() {
+    alive = false;
+    try { URL.revokeObjectURL(url); } catch (x) {}
+    mask.remove();
+  }
+  mask.querySelector('#cropCancel').onclick = () => { cleanup(); done(null); };
+  mask.querySelector('#cropOk').onclick = () => {
+    try {
+      const scale = base * k;
+      const left = (S0 - iw * scale) / 2 + tx;
+      const top = (S0 - ih * scale) / 2 + ty;
+      let sx = -left / scale, sy = -top / scale, sw = S0 / scale, sh = S0 / scale;
+      sx = Math.max(0, Math.min(iw - 1, sx));
+      sy = Math.max(0, Math.min(ih - 1, sy));
+      sw = Math.min(iw - sx, sw); sh = Math.min(ih - sy, sh);
+      const out = 200;
+      const c = document.createElement('canvas');
+      c.width = out; c.height = out;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#EFE9DA'; ctx.fillRect(0, 0, out, out);
+      ctx.drawImage(im, sx, sy, sw, sh, 0, 0, out, out);
+      const dataURL = c.toDataURL('image/jpeg', 0.8);
+      cleanup(); done(dataURL);
+    } catch (err) { toast('这张图处理不了，换一张试试'); cleanup(); done(null); }
+  };
+}
 
 function compressImage(file, cb) {
   const img = new Image();
