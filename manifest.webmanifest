@@ -1,0 +1,17 @@
+{
+  "name": "单词桥 · 背单词过桥",
+  "short_name": "单词桥",
+  "description": "把作业单词练一遍，再一块板一块板地跳过河。",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F6FCFB",
+  "theme_color": "#2FC1BE",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
