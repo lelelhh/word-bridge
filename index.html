@@ -24,23 +24,23 @@
   --muted:#6F7B8C;
   --ok:#2E7D6B; --bad:#C4483E;
 }
-html,body{margin:0;padding:0}
+html,body{margin:0;padding:0;height:100%;overflow:hidden}
 body{
   font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
   background:#0B1526;
   color:var(--ink);
   display:flex;justify-content:center;
-  min-height:100vh;
+  height:100%;
 }
 .phone{
-  width:100%;max-width:440px;min-height:100vh;
+  width:100%;max-width:440px;height:100%;max-height:100vh;
   background:var(--cream);
-  position:relative;overflow-x:hidden;
+  position:relative;overflow-x:hidden;overflow-y:hidden;
   display:flex;flex-direction:column;
 }
 @media(min-width:700px){
   body{align-items:center;padding:24px 0}
-  .phone{min-height:calc(100vh - 48px);border-radius:22px;box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden}
+  .phone{height:calc(100vh - 48px);border-radius:22px;box-shadow:0 24px 60px rgba(0,0,0,.55);overflow:hidden}
 }
 
 /* ---------- 通用 ---------- */
@@ -96,7 +96,7 @@ textarea.field{resize:vertical;min-height:120px;line-height:1.7;font-size:15px}
 }
 .tabs button.on{background:var(--paper);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.1)}
 
-.scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;min-height:0}
+.scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;min-height:0}
 .list{display:flex;flex-direction:column;gap:10px;padding:0 20px 24px}
 .item{
   background:var(--paper);border:1.5px solid var(--line);border-radius:12px;
@@ -1584,13 +1584,24 @@ function go(name, data, backTo) {
   const sc = document.querySelector('.scroll');
   if (sc) sc.scrollTop = 0;
 }
+/* 兜底：页面用固定视口壳 + 内部滚动；个别没有 .scroll 的页面若内容超出，就让这一屏自己滚 */
+function fixScreenScroll() {
+  document.querySelectorAll('#view .screen').forEach(s => {
+    if (s.querySelector('.scroll')) return;
+    const over = s.scrollHeight > s.clientHeight + 2;
+    s.style.overflowY = over ? 'auto' : '';
+    s.style.webkitOverflowScrolling = over ? 'touch' : '';
+  });
+}
 function render() {
   const r = ROUTES[V.name] || ROUTES.home;
   const el = document.getElementById('view');
   el.innerHTML = r.html(V.data);
   if (r.bind) r.bind(V.data);
   el.querySelectorAll('[data-back]').forEach(b => b.onclick = back);
+  fixScreenScroll();
 }
+window.addEventListener('resize', fixScreenScroll);
 const ROUTES = {};
 
 /* ================= 首页 ================= */
