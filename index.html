@@ -849,6 +849,20 @@ input[type=range]{accent-color:#2FC1BE}
 .label{margin:16px 0 8px}
 .divider{margin:16px 0}
 .empty{padding:40px 10px}
+/* 分组标题后面的小图标：统一 22×22 圆形、图标居中 */
+.iconbtn.gedit{width:22px;height:22px;min-width:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;padding:0;line-height:0;border-width:1.2px}
+/* 数量输入：去掉系统自带的小箭头（点不准），换成左右两个大按钮 */
+input[type=number].field{-moz-appearance:textfield;appearance:textfield}
+input[type=number].field::-webkit-outer-spin-button,
+input[type=number].field::-webkit-inner-spin-button{-webkit-appearance:none;appearance:none;margin:0}
+.stepper{display:flex;align-items:center;gap:10px;margin-top:2px}
+.stepper .stp{width:48px;height:48px;flex:0 0 48px;border-radius:13px;border:1.5px solid #CBEAE5;background:#F3FBF9;color:#14938F;font-family:inherit;font-size:22px;font-weight:800;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;-webkit-tap-highlight-color:transparent}
+.stepper .stp:active{background:#DFF5F0;transform:scale(.96)}
+.stepper .stp:disabled{opacity:.4;cursor:default;transform:none}
+.stepper input{flex:1;min-width:0;height:48px;text-align:center;font-size:19px;font-weight:800;color:#1F4B5E}
+.stepper .allbtn{flex:0 0 auto;height:48px;padding:0 12px;border-radius:13px;border:1.5px dashed #CBD8E3;background:#FFFDF7;color:#7C8A96;font-family:inherit;font-size:12px;font-weight:800;cursor:pointer}
+.stepper .allbtn.on{border-style:solid;border-color:#2FC1BE;background:#E7F8F5;color:#14938F}
+.iconbtn.gedit svg{display:block;margin:0}
 </style>
 </head>
 <body>
@@ -940,92 +954,98 @@ function seedMissingJT() {
   return true;
 }
 
-/* ================= 词库归类：年级 / 平日作业 ================= */
-const CN_DIGIT = { '一': '1', '二': '2', '三': '3', '四': '4', '五': '5', '六': '6', '七': '7', '八': '8', '九': '9' };
-const CN_DIGIT_REV = { '1': '一', '2': '二', '3': '三', '4': '四', '5': '五', '6': '六', '7': '七', '8': '八', '9': '九' };
-const BASE_GRADES = [
-  { k: '3', name: '三年级' },
-  { k: '4', name: '四年级' },
-  { k: '7', name: '七年级' },
-  { k: '8', name: '八年级' }
-];
-/* 用户自己写的年级（“五年级”“6年级”“初一预备班”）统一成一个 key */
-function normGrade(v) {
-  const t = String(v == null ? '' : v).trim();
-  if (!t) return '';
-  if (/^[1-9]$/.test(t)) return t;
-  const m1 = t.match(/([一二三四五六七八九])\s*年级/);
-  if (m1) return CN_DIGIT[m1[1]];
-  const m2 = t.match(/^([一二三四五六七八九])/);
-  if (m2) return CN_DIGIT[m2[1]];
-  return t;
+/* ================= 词库分组（完全由用户维护） =================
+   层级：分组（用户自己起名）→ 词库 → 单词。
+   分组之间完全平级，程序不认识"年级""平日作业"这些字，不再自动归并或改名。
+   S.groups: [{id, name}]；词库用 gid 指向分组，gid 为空就是未归类。
+   ================================================================ */
+function defaultGroups() {
+  return [{ id: 'g3', name: '三年级' }, { id: 'g7', name: '七年级' }];
 }
-function gradeName(k) {
-  const key = String(k == null ? '' : k);
-  if (!key) return '';
-  const base = BASE_GRADES.find(x => x.k === key);
-  if (base) return base.name;
-  if (/^[1-9]$/.test(key)) return (CN_DIGIT_REV[key] || key) + '年级';
-  return key;
+function ensureGroups() {
+  if (!Array.isArray(S.groups) || !S.groups.length) S.groups = defaultGroups();
+  const seen = {};
+  S.groups = S.groups.filter(g => {
+    if (!g || !g.id || seen[g.id]) return false;
+    seen[g.id] = 1; return true;
+  }).map(g => ({ id: String(g.id), name: String(g.name == null ? '' : g.name).trim() || '未命名分组' }));
+  if (!S.groups.length) S.groups = defaultGroups();
+  return S.groups;
 }
-/* 可选年级：预置的几个 + 你已经用过的自定义年级，按年级数排 */
-function gradeList() {
-  const keys = BASE_GRADES.map(x => x.k);
-  (S.libs || []).forEach(l => {
-    if (isHomework(l)) return;
-    const g = String(l.g || '');
-    if (g && keys.indexOf(g) < 0) keys.push(g);
+function groupName(gid) {
+  const g = ensureGroups().find(x => x.id === String(gid || ''));
+  return g ? g.name : '';
+}
+function newGroup(name) {
+  ensureGroups();
+  const g = { id: 'gg' + uid(), name: String(name == null ? '' : name).trim() || '新分组' };
+  S.groups.push(g);
+  return g;
+}
+function findGroupByName(name) {
+  const n = String(name == null ? '' : name).trim();
+  if (!n) return null;
+  return ensureGroups().find(g => g.name === n) || null;
+}
+function setLibGroup(lib, gid) {
+  if (!lib) return;
+  lib.gid = String(gid || '');
+  delete lib.g;
+  delete lib.k;
+  save();
+}
+/* 分组视图：[{id, title, sub, libs}]，顺序按 S.groups 排，最后是未归类 */
+function libGroups(libs) {
+  const arr = libs || [];
+  const gs = ensureGroups();
+  const out = gs.map(g => {
+    const items = arr.filter(l => String(l.gid || '') === g.id);
+    return { id: g.id, title: g.name, sub: items.length + ' 个词库', libs: items };
   });
-  const nums = keys.filter(k => /^[1-9]$/.test(k)).sort((a, b) => a.charCodeAt(0) - b.charCodeAt(0));
-  const others = keys.filter(k => !/^[1-9]$/.test(k));
-  return nums.concat(others).map(k => ({ k: k, name: gradeName(k) }));
+  const orphans = arr.filter(l => !gs.some(g => g.id === String(l.gid || '')));
+  if (orphans.length) out.push({ id: '', title: '未归类', sub: orphans.length + ' 个词库', libs: orphans });
+  return out;
 }
-function guessGrade(l) {
-  if (l.g) return String(l.g);
-  const t = String((l.book || '') + ' ' + (l.name || ''));
-  const m = t.match(/[一二三四五六七八九]\s*年级/);
-  if (m) return CN_DIGIT[m[0].charAt(0)];
-  if (/八/.test(t)) return '8';
-  if (/七/.test(t)) return '7';
-  if (/五/.test(t)) return '5';
-  if (/六/.test(t)) return '6';
-  if (/四/.test(t)) return '4';
-  if (/三/.test(t)) return '3';
-  return '';
+/* 老数据迁移：旧版按 g（年级 key）+ k（'unit'|'home'）归类。
+   折成「分组 id」后，只留三年级（'3'）与七年级（'7'）两个分组和它们下面的词库；
+   其它分组（含旧「平日作业」）连同词库一起删掉，之后由用户自己建。 */
+function migrateGroupsV2(raw) {
+  const keep = { '3': 'g3', '7': 'g7' };
+  let drop = 0, changed = false;
+  if (!Array.isArray(S.groups) || !S.groups.length) {
+    S.groups = defaultGroups();
+    changed = true;
+  }
+  (S.libs || []).forEach(l => {
+    if (l.gid === undefined) {
+      const old = String(l.g || '');
+      if (keep[old]) { l.gid = keep[old]; changed = true; }
+      else { l.__drop = 1; drop++; }
+    }
+    if ('g' in l) { delete l.g; changed = true; }
+    if ('k' in l) { delete l.k; changed = true; }
+  });
+  if (drop) {
+    S.libs = (S.libs || []).filter(l => !l.__drop);
+    S.libs.forEach(l => { delete l.__drop; });
+    changed = true;
+  }
+  if (!('grades' in raw) || Array.isArray(raw.grades)) { /* 旧字段，忽略 */ }
+  if ('grades' in S) { delete S.grades; changed = true; }
+  if ('homeName' in S) { delete S.homeName; changed = true; }
+  return changed;
 }
-function isHomework(l) { return (l.k || (l.unit ? 'unit' : 'home')) === 'home'; }
-/* 老数据补字段：按名字/册别猜年级，没有 unit 的算平日作业 */
+/* 启动时把词库字段收拾干净（gid 是唯一的分组依据） */
 function normalizeLibs() {
   let changed = false;
   (S.libs || []).forEach(l => {
-    const g = guessGrade(l);
-    if (!l.g && g) { l.g = g; changed = true; }
-    const k = l.unit ? 'unit' : (l.k || 'home');
-    if (!l.k) { l.k = k; changed = true; }
+    if (l.gid === undefined) { l.gid = ''; changed = true; }
+    if ('g' in l) { delete l.g; changed = true; }
+    if ('k' in l) { delete l.k; changed = true; }
   });
+  if ('grades' in S) { delete S.grades; changed = true; }
+  if ('homeName' in S) { delete S.homeName; changed = true; }
   if (changed) save();
-}
-/* 分组：[年级 → 单元] + 平日作业 + 未归类 */
-function libGroups(libs) {
-  const arr = libs || [];
-  const out = [];
-  const list = gradeList();
-  list.forEach(g => {
-    const items = arr.filter(l => !isHomework(l) && String(l.g || guessGrade(l)) === g.k);
-    if (items.length) out.push({ key: 'g' + g.k, title: g.name, sub: items.length + ' 个单元', libs: items });
-  });
-  const home = arr.filter(l => isHomework(l));
-  if (home.length) out.push({ key: 'home', title: '平日作业', sub: home.length + ' 个词库', libs: home });
-  const none = arr.filter(l => !isHomework(l) && !list.some(g => String(l.g || guessGrade(l)) === g.k));
-  if (none.length) out.push({ key: 'none', title: '未归类', sub: none.length + ' 个单元', libs: none });
-  return out;
-}
-/* 归类修改：val = 年级 key 或 'home'（平日作业） */
-function setLibGroup(lib, val) {
-  if (!lib) return;
-  if (val === 'home') { lib.g = ''; lib.k = 'home'; }
-  else { lib.g = String(val || ''); lib.k = 'unit'; }
-  save();
 }
 
 /* ================= 状态 ================= */
@@ -1048,7 +1068,9 @@ const S = {
   sessions: [],   // {date, bridge, total, firstTry, weak}
   settings: { rate: 0.85, accent: 'en-GB' },
   allowSkipWarm: true,
-  seedVer: ''     // 预置词库版本，升级时重建单元词库
+  seedVer: '',    // 预置词库版本，升级时重建单元词库
+  groups: [],     // 词库分组：[{id, name}]，完全由用户维护（默认三、七年级）
+  draws: {}       // 词库抽词轮次：libId -> {round, done:[词key]}，抽完一轮自动重开
 };
 
 /* ---------- 学生账号 ---------- */
@@ -1128,7 +1150,8 @@ function save() {
     stashStudent();
     const json = JSON.stringify({
       libs: S.libs, students: S.students, activeId: S.activeId,
-      allowSkipWarm: S.allowSkipWarm, seedVer: S.seedVer
+      allowSkipWarm: S.allowSkipWarm, seedVer: S.seedVer, groups: S.groups || [],
+      draws: S.draws || {}
     });
     /* 写之前留一份上一版存档，误覆盖时还能捞回来 */
     const prev = localStorage.getItem(LSKEY);
@@ -1156,6 +1179,10 @@ function load() {
     S.libs = o.libs || [];
     S.allowSkipWarm = o.allowSkipWarm !== false;
     S.seedVer = o.seedVer || '';
+    S.groups = Array.isArray(o.groups) ? o.groups : [];
+    S.draws = (o.draws && typeof o.draws === 'object') ? o.draws : {};
+    if (migrateGroupsV2(o)) save();
+    ensureGroups();
     if (Array.isArray(o.students) && o.students.length) {
       S.students = o.students;
       loadStudent(o.activeId || o.students[0].id);
@@ -1189,6 +1216,7 @@ function seed() {
     name: '外研新版七上 · ' + u.unit,
     book: '外研新版七上',
     unit: u.unit,
+    gid: 'g7',
     words: u.words.map(w => ({ en: w[0], ph: w[1], cn: w[2] }))
   }));
   S.libs = units.concat(keep);
@@ -1699,29 +1727,44 @@ ROUTES.libs = {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#9A5B4E" stroke-width="2"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>
         </button>
       </div>`;
-    const body = groups.length ? groups.map((gp, gi) => `
+    const body = groups.map((gp, gi) => `
       <div style="margin-top:${gi ? 18 : 4}px">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;margin:0 2px 8px">
-          <div style="font-size:13.5px;font-weight:800;color:#14938F;letter-spacing:.4px">${esc(gp.title)}</div>
-          <div style="font-size:11px;color:#9AAFBE">${esc(gp.sub)}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin:0 2px 8px 0;padding-right:14px">
+          <div style="flex:1;min-width:0;font-size:13.5px;font-weight:800;color:#14938F;letter-spacing:.4px;line-height:1.2">${esc(gp.title)}</div>
+          <div style="font-size:11px;color:#9AAFBE;white-space:nowrap">${esc(gp.sub)}</div>
+          ${gp.id ? `<button class="iconbtn gedit" data-gren="${esc(gp.id)}" aria-label="改分组名">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#2A8C86" stroke-width="2" stroke-linecap="round"><path d="M15 4l5 5M4 20l1-5 11-11 4 4-11 11-5 1z"/></svg>
+          </button>
+          <button class="iconbtn gedit" data-gdel="${esc(gp.id)}" aria-label="删除分组">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#9A5B4E" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>` : ''}
         </div>
-        ${gp.libs.map(row).join('')}
-      </div>`).join('')
-      : `<div class="empty">还没有词库<br>点右上角“新建词库”开始</div>`;
+        ${gp.libs.length ? gp.libs.map(row).join('') : `<div class="sub" style="padding:2px 2px 4px;font-size:12px;color:#9AAFBE">这个分组还是空的，点“新建词库”往里加，或者把别的词库“归类”过来。</div>`}
+      </div>`).join('');
     return `<div class="screen">
-      ${topbar('词库素材', 'parent', `<button class="btn btn-green btn-sm" id="newLib">新建词库</button>`)}
-      <p class="sub pad" style="padding:16px 20px 10px">按年级分组：每个年级下面是各个单元，平时零散作业放在“平日作业”。选词时会从这里挑。</p>
+      ${topbar('词库素材', 'parent', `<div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" id="newGroup">新建分组</button>
+        <button class="btn btn-green btn-sm" id="newLib">新建词库</button>
+      </div>`)}
+      <p class="sub pad" style="padding:16px 20px 10px">分组名字随你起（比如“七年级”“平日作业三年级”“周末冲刺”），分组下面是词库，词库里面是单词。分组平级，想怎么分都行；每个词库可以随时用“归类”换到别的分组。</p>
       <div class="scroll">
-        <div class="list">${body}</div>
+        <div class="list">${body || `<div class="empty">还没有分组<br>点右上角“新建分组”开始</div>`}</div>
       </div>
     </div>`;
   },
   bind() {
+    const ng = document.getElementById('newGroup');
+    if (ng) ng.onclick = () => askText('新建分组', '随便起个名字就行（“四年级”“平日作业三年级”“周末冲刺”…）。分组之间是平级的，以后还能改名。', '例如：四年级 / 平日作业三年级', v => {
+      if (!v) return;
+      const dup = findGroupByName(v);
+      if (dup) { toast('已经有同名分组了'); go('libs', {}, 'parent'); return; }
+      newGroup(v); save(); go('libs', {}, 'parent'); toast('分组已建好');
+    }, '');
     document.getElementById('newLib').onclick = () => askNewLib((v) => {
       if (!v || !v.name) return;
-      const lib = { id: uid(), name: v.name, words: [] };
-      if (v.g === 'home') { lib.k = 'home'; lib.g = ''; }
-      else { lib.g = v.g; lib.k = 'unit'; }
+      let gid = String(v.gid || '');
+      if (v.newGroup) gid = newGroup(v.newGroup).id;
+      const lib = { id: uid(), name: v.name, words: [], gid: gid };
       S.libs.unshift(lib);
       save(); go('libDetail', { libId: lib.id }, 'libs');
     });
@@ -1741,6 +1784,39 @@ ROUTES.libs = {
         toast('名字已改');
       }, lib.name);
     });
+    document.querySelectorAll('[data-gren]').forEach(el => el.onclick = e => {
+      e.stopPropagation();
+      const gid = el.dataset.gren;
+      const g = ensureGroups().find(x => x.id === gid);
+      if (!g) return;
+      askText('给这一组改名', '只改分组的名字，组里的词库和单词都不动。想让词库换组，去那个词库点“归类”。', '例如：平日作业三年级', v => {
+        if (!v) return;
+        const cur = groupName(gid);
+        if (v === cur) { toast('名字没变'); return; }
+        const dup = ensureGroups().find(x => x.id !== gid && x.name === v);
+        if (dup) { toast('已经有同名分组了，名字没改'); return; }
+        const g2 = ensureGroups().find(x => x.id === gid);
+        if (!g2) return;
+        g2.name = v;
+        save();
+        go('libs', {}, 'parent'); toast('分组名已改');
+      }, g.name);
+    });
+    document.querySelectorAll('[data-gdel]').forEach(el => el.onclick = e => {
+      e.stopPropagation();
+      const gid = el.dataset.gdel;
+      const gp = libGroups(S.libs).find(g => g.id === gid);
+      if (!gp) return;
+      if (gp.libs.length) {
+        toast('这一组还有 ' + gp.libs.length + ' 个词库，先把它们删掉或归类到别的组才能删分组');
+        return;
+      }
+      confirmBox('删除分组「' + gp.title + '」？', '这个分组是空的，删掉不会影响任何词库。', () => {
+        S.groups = ensureGroups().filter(x => x.id !== gid);
+        if (!S.groups.length) S.groups = defaultGroups();
+        save(); go('libs', {}, 'parent'); toast('分组已删除');
+      });
+    });
     document.querySelectorAll('[data-del]').forEach(el => el.onclick = e => {
       e.stopPropagation();
       const id = el.dataset.del;
@@ -1751,26 +1827,19 @@ ROUTES.libs = {
   }
 };
 
-/* 新建词库：先挑年级（可自己写年级名）/ 平日作业，再起名字 */
+/* 新建词库：先选一个已有分组，或者顺手新建一个分组，再起词库名 */
 function askNewLib(cb) {
   const mask = document.createElement('div');
   mask.className = 'mask';
-  let g = '3';
+  ensureGroups();
+  let gid = (ensureGroups()[0] || {}).id || '';
   let custom = false;
-  const chip = (val, txt) => `<button data-lg="${val}" style="padding:9px 13px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;border:1.5px solid ${val === g && !custom ? '#2FC1BE' : '#DBD2C0'};background:${val === g && !custom ? '#E7F8F5' : '#FFFDF7'};color:${val === g && !custom ? '#14938F' : '#7C8A96'}">${txt}</button>`;
-  const paintAll = () => {
-    mask.querySelectorAll('#nbChips [data-lg]').forEach(c => {
-      const on = !custom && c.dataset.lg === g;
-      c.style.borderColor = on ? '#2FC1BE' : '#DBD2C0';
-      c.style.background = on ? '#E7F8F5' : '#FFFDF7';
-      c.style.color = on ? '#14938F' : '#7C8A96';
-    });
-  };
+  const chip = (val, txt) => `<button data-lg="${val}" style="padding:9px 13px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;border:1.5px solid ${val === gid && !custom ? '#2FC1BE' : '#DBD2C0'};background:${val === gid && !custom ? '#E7F8F5' : '#FFFDF7'};color:${val === gid && !custom ? '#14938F' : '#7C8A96'}">${txt}</button>`;
   mask.innerHTML = `<div class="modal">
-    <h3>新建词库</h3><p>先选它属于哪个年级（或平日作业），之后按年级分组就找得到。没有的年级自己填。</p>
+    <h3>新建词库</h3><p>先选它放进哪个分组（分组名都是你自己起的），没有合适的分组就点“＋新建分组”。</p>
     <div id="nbChips" style="display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 4px"></div>
-    <input class="field" id="nbGrade" placeholder="其他年级，例如：五年级" autocomplete="off" style="display:none;margin-top:10px">
-    <input class="field" id="nbName" placeholder="例如：七上 Unit 3 单词 / 10月15日作业" autocomplete="off" style="margin-top:12px">
+    <input class="field" id="nbGrade" placeholder="新分组名字，例如：四年级 / 平日作业三年级" autocomplete="off" style="display:none;margin-top:10px">
+    <input class="field" id="nbName" placeholder="词库名字，例如：七上 Unit 3 / 10月15日作业" autocomplete="off" style="margin-top:12px">
     <div class="acts" style="margin-top:16px">
       <button class="btn btn-ghost" id="nbNo">取消</button>
       <button class="btn btn-green" id="nbYes">创建</button>
@@ -1781,10 +1850,9 @@ function askNewLib(cb) {
   const gInp = mask.querySelector('#nbGrade');
   const inp = mask.querySelector('#nbName');
   const renderChips = () => {
-    chipsBox.innerHTML = gradeList().map(x => chip(x.k, x.name)).join('')
-      + `<button id="nbOther" style="padding:9px 13px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;border:1.5px dashed ${custom ? '#2FC1BE' : '#DBD2C0'};background:${custom ? '#E7F8F5' : '#FFFDF7'};color:${custom ? '#14938F' : '#7C8A96'}">＋ 其他年级</button>`
-      + chip('home', '平日作业');
-    chipsBox.querySelectorAll('[data-lg]').forEach(c => c.onclick = () => { g = c.dataset.lg; custom = false; gInp.style.display = 'none'; renderChips(); });
+    chipsBox.innerHTML = ensureGroups().map(x => chip(x.id, x.name)).join('')
+      + `<button id="nbOther" style="padding:9px 13px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;border:1.5px dashed ${custom ? '#2FC1BE' : '#DBD2C0'};background:${custom ? '#E7F8F5' : '#FFFDF7'};color:${custom ? '#14938F' : '#7C8A96'}">＋ 新建分组</button>`;
+    chipsBox.querySelectorAll('[data-lg]').forEach(c => c.onclick = () => { gid = c.dataset.lg; custom = false; gInp.style.display = 'none'; renderChips(); });
     mask.querySelector('#nbOther').onclick = () => {
       custom = true; renderChips();
       gInp.style.display = 'block'; gInp.value = ''; setTimeout(() => gInp.focus(), 40);
@@ -1796,29 +1864,32 @@ function askNewLib(cb) {
   const submit = () => {
     const name = inp.value.trim();
     if (!name) { inp.focus(); return; }
-    let gv = g;
+    let newGname = '';
     if (custom) {
-      gv = normGrade(gInp.value);
-      if (!gv) { gInp.focus(); return; }
+      const gn = gInp.value.trim();
+      if (!gn) { gInp.focus(); return; }
+      const hit = findGroupByName(gn);
+      if (hit) gid = hit.id; else newGname = gn;
     }
-    close(); cb({ name: name, g: gv });
+    close(); cb({ name: name, gid: gid, newGroup: newGname });
   };
   mask.querySelector('#nbNo').onclick = close;
   mask.querySelector('#nbYes').onclick = submit;
   inp.addEventListener('keydown', e => { if (e.key === 'Enter') submit(); });
 }
-/* 改归类（只在点“归类”时出现，录入单词的界面不再挂这一块） */
+/* 改归类：把词库挪到任意分组，也可以顺手新建分组 */
 function askLibGroup(lib) {
   if (!lib) return;
   const mask = document.createElement('div');
   mask.className = 'mask';
-  const cur = isHomework(lib) ? 'home' : String(lib.g || '');
+  ensureGroups();
+  const cur = String(lib.gid || '');
   const chip = (val, txt, on) => `<button data-lg="${val}" style="padding:9px 13px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;border:1.5px solid ${on ? '#2FC1BE' : '#DBD2C0'};background:${on ? '#E7F8F5' : '#FFFDF7'};color:${on ? '#14938F' : '#7C8A96'}">${txt}</button>`;
   let custom = false;
   mask.innerHTML = `<div class="modal">
-    <h3>归类</h3><p>它现在排在「${esc(cur === 'home' ? '平日作业' : (cur ? gradeName(cur) : '未归类'))}」，点一下就换组，单词不受影响。</p>
+    <h3>归类</h3><p>它现在排在「${esc(cur ? groupName(cur) : '未归类')}」，点一下就换组，单词不受影响。</p>
     <div id="lgChips" style="display:flex;gap:7px;flex-wrap:wrap;margin:14px 0 4px"></div>
-    <input class="field" id="lgGrade" placeholder="其他年级，例如：五年级" autocomplete="off" style="display:none;margin-top:10px">
+    <input class="field" id="lgGrade" placeholder="新分组名字，例如：四年级 / 平日作业三年级" autocomplete="off" style="display:none;margin-top:10px">
     <div class="acts" style="margin-top:16px">
       <button class="btn btn-ghost" id="lgNo">关闭</button>
       <button class="btn btn-green" id="lgYes">确定</button>
@@ -1829,9 +1900,8 @@ function askLibGroup(lib) {
   const gInp = mask.querySelector('#lgGrade');
   let pick = cur;
   const render = () => {
-    box.innerHTML = gradeList().map(x => chip(x.k, x.name, !custom && pick === x.k)).join('')
-      + `<button id="lgOther" style="padding:9px 13px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;border:1.5px dashed ${custom ? '#2FC1BE' : '#DBD2C0'};background:${custom ? '#E7F8F5' : '#FFFDF7'};color:${custom ? '#14938F' : '#7C8A96'}">＋ 其他年级</button>`
-      + chip('home', '平日作业', !custom && pick === 'home')
+    box.innerHTML = ensureGroups().map(x => chip(x.id, x.name, !custom && pick === x.id)).join('')
+      + `<button id="lgOther" style="padding:9px 13px;border-radius:11px;font-family:inherit;font-size:13px;font-weight:800;cursor:pointer;border:1.5px dashed ${custom ? '#2FC1BE' : '#DBD2C0'};background:${custom ? '#E7F8F5' : '#FFFDF7'};color:${custom ? '#14938F' : '#7C8A96'}">＋ 新建分组</button>`
       + chip('', '未归类', !custom && pick === '');
     box.querySelectorAll('[data-lg]').forEach(c => c.onclick = () => { pick = c.dataset.lg; custom = false; gInp.style.display = 'none'; render(); });
     mask.querySelector('#lgOther').onclick = () => { custom = true; render(); gInp.style.display = 'block'; gInp.value = ''; setTimeout(() => gInp.focus(), 40); };
@@ -1841,7 +1911,13 @@ function askLibGroup(lib) {
   mask.querySelector('#lgNo').onclick = close;
   mask.querySelector('#lgYes').onclick = () => {
     let val = pick;
-    if (custom) { val = normGrade(gInp.value); if (!val) { gInp.focus(); return; } }
+    if (custom) {
+      const gn = gInp.value.trim();
+      if (!gn) { gInp.focus(); return; }
+      const hit = findGroupByName(gn);
+      if (hit) val = hit.id;
+      else { val = newGroup(gn).id; }
+    }
     setLibGroup(lib, val);
     close();
     go('libDetail', { libId: lib.id, tab: 'words' }, 'libs');
@@ -1893,7 +1969,7 @@ ROUTES.libDetail = {
     if (!lib) return `<div class="screen">${topbar('词库', 'libs')}<div class="empty">词库不存在</div></div>`;
     const tab = d.tab || 'words';
     const auto = S.auto[lib.id] || { on: false, newCount: 8, reviewCount: 3 };
-    let body = '';
+    const linfo = drawInfo(lib);    let body = '';
 
     if (tab === 'words') {
       body = `<div class="scroll">
@@ -1936,7 +2012,13 @@ ROUTES.libDetail = {
                   <div style="flex:1;min-width:0"><div class="en">${esc(w.en)}</div><div class="cn">${esc(w.cn)}</div></div>
                 </div>`).join('') || '<div class="empty">词库是空的</div>'}
               </div>` : `<span class="label">本次抽多少个词</span>
-              <input class="field" id="qtyInput" type="number" min="1" max="${lib.words.length}" value="${qty}">`}
+              <div class="stepper" id="qtyStep">
+                <button class="stp" id="qtyMinus" aria-label="减一个">−</button>
+                <input class="field" id="qtyInput" type="number" inputmode="numeric" min="1" max="${lib.words.length}" value="${qty}">
+                <button class="stp" id="qtyPlus" aria-label="加一个">＋</button>
+                <button class="allbtn" id="qtyAll">全部 ${lib.words.length} 个</button>
+              </div>
+              <p class="sub" id="drawInfo" style="margin-top:10px">${drawHintText(linfo)}</p>`}
           </div>
           <button class="btn btn-main btn-block" id="makeGo" style="margin-top:6px">下一步：确认词表</button>
           <p class="sub" style="text-align:center;margin-top:10px">确认页会列出选中的词，可以逐个取消，确认后才生成桥</p>
@@ -1955,11 +2037,19 @@ ROUTES.libDetail = {
             </div>
             <div class="divider"></div>
             <span class="label" style="margin-top:0">每天新词数量</span>
-            <input class="field" id="an" type="number" min="1" max="30" value="${auto.newCount}">
+            <div class="stepper">
+              <button class="stp" data-step="-1" data-for="an" aria-label="减一个">−</button>
+              <input class="field" id="an" type="number" inputmode="numeric" min="1" max="30" value="${auto.newCount}">
+              <button class="stp" data-step="1" data-for="an" aria-label="加一个">＋</button>
+            </div>
             <span class="label">每天复习薄弱词数量</span>
-            <input class="field" id="ar" type="number" min="0" max="20" value="${auto.reviewCount}">
+            <div class="stepper">
+              <button class="stp" data-step="-1" data-for="ar" aria-label="减一个">−</button>
+              <input class="field" id="ar" type="number" inputmode="numeric" min="0" max="20" value="${auto.reviewCount}">
+              <button class="stp" data-step="1" data-for="ar" aria-label="加一个">＋</button>
+            </div>
             <div class="divider"></div>
-            <div class="sub">词库里已学过的词不会重复抽。修改设置后，下一次打开发挥作用。</div>
+            <div class="sub">${esc(drawHintText(linfo))}</div>
           </div>
           <button class="btn btn-green btn-block" id="autoSave">保存设置</button>
         </div>
@@ -2000,7 +2090,32 @@ ROUTES.libDetail = {
         go('libDetail', { libId: lib.id, tab: 'make', mode: el.dataset.mode, sel: d.sel || [], qty: d.qty }, 'libs');
       });
       const qtyInput = document.getElementById('qtyInput');
-      if (qtyInput) qtyInput.oninput = () => { d.qty = Math.max(1, Math.min(+qtyInput.value || 1, lib.words.length)); };
+      if (qtyInput) {
+        const maxN = Math.max(1, lib.words.length);
+        const sync = n => {
+          const v = Math.max(1, Math.min(Math.round(+n || 1), maxN));
+          qtyInput.value = v; d.qty = v;
+          document.getElementById('qtyMinus').disabled = v <= 1;
+          document.getElementById('qtyPlus').disabled = v >= maxN;
+          document.getElementById('qtyAll').classList.toggle('on', v >= maxN);
+          return v;
+        };
+        const minus = document.getElementById('qtyMinus');
+        const plus = document.getElementById('qtyPlus');
+        const hold = (btn, step) => {
+          let t = 0, iv = 0;
+          const fire = () => sync((+qtyInput.value || 1) + step);
+          btn.onclick = () => fire();
+          btn.onpointerdown = () => { t = setTimeout(() => { iv = setInterval(fire, 90); }, 380); };
+          const stop = () => { clearTimeout(t); clearInterval(iv); };
+          btn.onpointerup = stop; btn.onpointerleave = stop; btn.onpointercancel = stop;
+        };
+        hold(minus, -1); hold(plus, +1);
+        document.getElementById('qtyAll').onclick = () => sync(maxN);
+        qtyInput.oninput = () => { const v = Math.max(1, Math.min(+qtyInput.value || 1, maxN)); d.qty = v; };
+        qtyInput.onblur = () => sync(qtyInput.value);
+        sync(qtyInput.value);
+      }
       document.querySelectorAll('#manualList .selectrow').forEach(el => el.onclick = () => {
         const i = +el.dataset.i;
         const sel = d.sel || [];
@@ -2015,6 +2130,19 @@ ROUTES.libDetail = {
 
     if (d.tab === 'auto') {
       const cur = S.auto[lib.id] || { on: false, newCount: 8, reviewCount: 3 };
+      document.querySelectorAll('[data-for]').forEach(b => {
+        const inp = document.getElementById(b.dataset.for);
+        const lo = +inp.min, hi = +inp.max, step = +b.dataset.step;
+        let t = 0, iv = 0;
+        const fire = () => {
+          const v = Math.max(lo, Math.min(hi, (+inp.value || lo) + step));
+          inp.value = v;
+        };
+        b.onclick = () => fire();
+        b.onpointerdown = () => { t = setTimeout(() => { iv = setInterval(fire, 90); }, 380); };
+        const stop = () => { clearTimeout(t); clearInterval(iv); };
+        b.onpointerup = stop; b.onpointerleave = stop; b.onpointercancel = stop;
+      });
       document.getElementById('autoToggle').onclick = () => {
         cur.on = !cur.on; S.auto[lib.id] = cur; save();
         go('libDetail', { libId: lib.id, tab: 'auto' }, 'libs');
@@ -2102,18 +2230,75 @@ function bulkImport(lib) {
   };
 }
 /* ================= 选词 → 确认 → 生成桥 ================= */
+/* 抽词轮次：每个词库记一份「本轮已抽过的词」，抽完一轮自动开新一轮。
+   词的身份用「英文+中文」拼的 key，改名/加词/删词不会错位。 */
+function drawKey(w) {
+  return String((w && w.en) || '').trim().toLowerCase() + '|' + String((w && w.cn) || '').trim();
+}
+function drawState(libId) {
+  if (!S.draws || typeof S.draws !== 'object') S.draws = {};
+  let st = S.draws[libId];
+  if (!st || typeof st !== 'object') st = { round: 1, done: [] };
+  if (!Array.isArray(st.done)) st.done = [];
+  st.round = Math.max(1, +st.round || 1);
+  S.draws[libId] = st;
+  return st;
+}
+/* 当前轮概况：total 词条数 / done 本轮已抽 / round 第几轮 / wrapped 这轮是否已抽满 */
+function drawInfo(lib) {
+  const st = drawState(lib.id);
+  const keys = (lib.words || []).map(drawKey);
+  const keep = [];
+  st.done.forEach(k => { if (keys.indexOf(k) > -1 && keep.indexOf(k) < 0) keep.push(k); });
+  if (keep.length !== st.done.length) st.done = keep;   // 词被删掉了，顺带清理
+  const total = (lib.words || []).length;
+  const done = st.done.length;
+  return { st: st, total: total, done: done, round: st.round, wrapped: total > 0 && done >= total };
+}
+function shuffleArr(a) {
+  const p = a.slice();
+  for (let i = p.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = p[i]; p[i] = p[j]; p[j] = t; }
+  return p;
+}
+/* 界面上的轮次提示文案 */
+function drawHintText(info) {
+  if (!info || !info.total) return '这个词库还没有单词';
+  if (info.wrapped) return '第 ' + info.round + ' 轮已抽完（' + info.total + '/' + info.total + '）。下次再抽会自动从第 ' + (info.round + 1) + ' 轮开头重新开始。';
+  return '第 ' + info.round + ' 轮 · 本轮已抽 ' + info.done + '/' + info.total + ' 个，还剩 ' + (info.total - info.done) + ' 个没抽。抽过的这一轮不会再抽到。';
+}
+/* 按轮次选出本次要练的词：先取本轮没抽过的；不够就补抽过的；这轮抽满了自动开新一轮 */
+function pickByRound(lib, qty, mode) {
+  const info = drawInfo(lib);
+  const used = new Set(info.st.done);
+  let pool = (lib.words || []).filter(w => !used.has(drawKey(w)));
+  let round = info.round, newRound = false;
+  if (!pool.length) { round = info.round + 1; newRound = true; pool = (lib.words || []).slice(); }
+  if (mode === 'random') pool = shuffleArr(pool);
+  const picked = pool.slice(0, qty);
+  if (picked.length < qty) {
+    const rest = (lib.words || []).filter(w => picked.indexOf(w) < 0);
+    const extra = (mode === 'random' ? shuffleArr(rest) : rest).slice(0, qty - picked.length);
+    picked.push.apply(picked, extra);
+  }
+  return { picked: picked.map(w => ({ ...w })), round: round, newRound: newRound };
+}
+/* 真的生成桥时才记账（预览里取消不影响轮次） */
+function commitDraw(lib, words, newRound) {
+  const st = drawState(lib.id);
+  if (newRound || drawInfo(lib).wrapped) { st.round = (st.round || 1) + 1; st.done = []; }
+  (words || []).forEach(w => { const k = drawKey(w); if (st.done.indexOf(k) < 0) st.done.push(k); });
+  save();
+}
 function buildTask(lib, d) {
   if (!lib.words.length) { toast('这个词库还没有单词'); return; }
   const mode = d.mode || 'order';
   let picked = [];
+  let draw = null;
   const qty = Math.max(1, Math.min(d.qty || Math.min(10, lib.words.length), lib.words.length));
 
-  if (mode === 'order') {
-    picked = lib.words.slice(0, qty).map(w => ({ ...w }));
-  } else if (mode === 'random') {
-    const pool = lib.words.slice();
-    for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-    picked = pool.slice(0, qty).map(w => ({ ...w }));
+  if (mode === 'order' || mode === 'random') {
+    draw = pickByRound(lib, qty, mode);
+    picked = draw.picked;
   } else {
     const sel = (d.sel || []).slice();
     if (!sel.length) { toast('先勾选要练的词'); return; }
@@ -2121,10 +2306,10 @@ function buildTask(lib, d) {
   }
 
   if (!picked.length) { toast('没有选出单词'); return; }
-  confirmWords(lib, picked);
+  confirmWords(lib, picked, draw);
 }
 
-function confirmWords(lib, words) {
+function confirmWords(lib, words, draw) {
   const chosen = words.map(() => true);
   const mask = document.createElement('div');
   mask.className = 'mask';
@@ -2155,6 +2340,7 @@ function confirmWords(lib, words) {
       const finalWords = words.filter((w, i) => chosen[i]);
       if (!finalWords.length) { toast('至少要留一个词'); return; }
       mask.remove();
+      if (draw) commitDraw(lib, finalWords, draw.newRound);
       const md = new Date();
       S.bridges.unshift({
         id: uid(),
@@ -2181,9 +2367,9 @@ function ensureTodayTask() {
     const lib = S.libs.find(l => l.id === libId);
     if (!cfg || !cfg.on || !lib || !lib.words.length) return;
     if (cfg.lastRun === DAY()) return;
-    const cursor = cfg.cursor || 0;
-    const fresh = lib.words.slice(cursor, cursor + cfg.newCount).map(w => ({ ...w }));
-    cfg.cursor = cursor + fresh.length;
+    const got = pickByRound(lib, cfg.newCount, 'order');
+    const fresh = got.picked;
+    commitDraw(lib, fresh, got.newRound);
     const review = S.weak.slice(0, cfg.reviewCount || 0).map(w => ({ en: w.en, cn: w.cn, ph: w.ph }));
     const all = fresh.concat(review);
     if (!all.length) {
@@ -2576,14 +2762,20 @@ ROUTES.kidList = {
       body = done.length ? done.map(b => card(b, 'done')).join('')
         : `<div class="empty" style="color:#7B90AB">还没有通关记录</div>`;
     } else if (tab === 'units') {
-      /* 所有按年级归类的词库都算“单元”，自建的五年级/六年级词库也要出现在这里 */
-      const units = S.libs.filter(l => !isHomework(l) && (l.words || []).length);
+      /* 所有有单词的词库都算“单元”，按用户自己建的分组列出来 */
+      const units = S.libs.filter(l => (l.words || []).length);
       const card = l => {
         const label = l.unit ? libLabel(l) : String(l.name || '词库');
+        /* 缩略牌：上行册别（三上/七上），下行单元号（U2）；没有 unit 的用名字前四个字 */
+        const bookShort = (String(l.book || '') + ' ' + String(l.name || '')).match(/[一二三四五六七八九]上/);
+        const uTag = l.unit ? String(l.unit).replace(/^Unit\s*/i, 'U') : label.slice(0, 4);
         return `<button class="bridge-card" data-ulib="${l.id}">
-          <div style="width:60px;height:36px;display:grid;place-items:center;border-radius:9px;background:#1E3350;color:#F7C948;font-size:${label.length > 4 ? 11 : 13}px;font-weight:800;flex:0 0 auto">${esc(label)}</div>
+          <div style="width:62px;height:42px;flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border-radius:10px;background:#1E3350;line-height:1.1;padding:3px 0 4px">
+            ${bookShort ? `<span style="font-size:9px;font-weight:700;color:#93AAC6;letter-spacing:.5px">${esc(bookShort[0])}</span>` : ''}
+            <span style="font-size:${String(uTag).length > 3 ? 11 : 15}px;font-weight:800;color:#F7C948;letter-spacing:.4px;white-space:nowrap">${esc(uTag)}</span>
+          </div>
           <div style="flex:1;min-width:0">
-            <div class="nm">${esc(label)} 单元练习</div>
+            <div class="nm">${l.unit ? esc(uTag) + ' 单元练习' : esc(label)}</div>
             <div class="mt">${l.book ? esc(l.book) + ' · ' : ''}${l.words.length} 个词</div>
           </div>
           <svg class="arw" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 5l7 7-7 7"/></svg>
@@ -2616,9 +2808,9 @@ ROUTES.kidList = {
           <div class="kidhello">今天要过几座桥？</div>
           <div class="kidname">${esc(S.profile.name || '小探险家')}</div>
         </div>
-        <button id="switchKid" aria-label="切换学生" style="margin-left:auto;background:transparent;border:1.5px solid #2C4266;border-radius:9px;color:#9FB4CC;font-size:12px;padding:7px 9px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M16 3.5a4 4 0 010 7"/><path d="M4 20v-2a5 5 0 015-5h4"/><path d="M13 20v-2a5 5 0 015-5h2"/></svg>
-          切换
+        <button id="switchKid" aria-label="切换学生" style="margin-left:auto;background:transparent;border:1.5px solid #2C4266;border-radius:9px;color:#9FB4CC;font-size:12px;padding:7px 10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="6.6" cy="7.4" r="2.8"/><path d="M1.8 17.6c0-2.6 2-4.3 4.8-4.3s4.8 1.7 4.8 4.3"/><circle cx="16.6" cy="10" r="2.2"/><path d="M13.6 18.9c0-2 1.4-3.3 3-3.3s3 1.3 3 3.3"/></svg>
+          换人
         </button>
         <button id="exitHome" aria-label="返回首页" style="background:transparent;border:1.5px solid #2C4266;border-radius:9px;color:#8FA6C1;font-size:12px;padding:7px 10px;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:5px">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>
@@ -3191,7 +3383,7 @@ function practiceStart(mode, libId) {
   P = { mode, libId: lib.id, libName: lib.name, words, i: 0, revealed: false, right: 0, wrong: 0, picks: null, dir: (prevDir || 'en') };
   return P;
 }
-/* 选词库页面：按 年级 → 单元 / 平日作业 分组，返回 grid 内的卡片串 */
+/* 选词库页面：按「用户建的分组 → 词库」列出，返回 grid 内的卡片串 */
 function pickGroupsHTML(libs) {
   const card = l => `<button data-picklib="${l.id}" style="text-align:left;padding:12px 13px;border-radius:12px;border:1.5px solid #DBEFEA;background:#FFFFFF;color:#1F4B5E;font-family:inherit;cursor:pointer">
       <span style="display:block;font-size:14px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(libLabel(l))}</span>
